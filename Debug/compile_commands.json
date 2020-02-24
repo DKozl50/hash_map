@@ -1,0 +1,7 @@
+[
+{
+  "directory": "/Users/dkozl/Desktop/DZ/algos/hash_map/Debug",
+  "command": "/Library/Developer/CommandLineTools/usr/bin/c++    -g -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX10.15.sdk   -o CMakeFiles/HashMap.dir/test_hashmap.cpp.o -c /Users/dkozl/Desktop/DZ/algos/hash_map/test_hashmap.cpp",
+  "file": "/Users/dkozl/Desktop/DZ/algos/hash_map/test_hashmap.cpp"
+}
+]
