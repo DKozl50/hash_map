@@ -57,7 +57,7 @@ public:
         while (first_nonempty_cell->empty()) {
             ++first_nonempty_cell;
         }
-        return iterator(first_nonempty_cell->begin(), first_nonempty_cell, &hash_table_);
+        return iterator(first_nonempty_cell->begin(), first_nonempty_cell, &this->hash_table_);
     }
 
     iterator end() {
@@ -66,29 +66,33 @@ public:
         return iterator(last_elem, last_cell, &hash_table_);
     }
 
+    const_iterator begin() const {
+        auto first_nonempty_cell = this->hash_table_.begin();
+        if (this->empty()) {
+            return this->end();
+        }
+        while (first_nonempty_cell->empty()) {
+            ++first_nonempty_cell;
+        }
+        return const_iterator(first_nonempty_cell->begin(), first_nonempty_cell, &this->hash_table_);
+    }
+
+    const_iterator end() const {
+        auto last_cell = this->hash_table_.end();
+        auto last_elem = last_cell->end();
+        return const_iterator(last_elem, last_cell, &this->hash_table_);
+    }
+
     Hash hash_function() const {
         return this->hasher_;
     }
 
     iterator find(KeyType t_key) {
-        const size_t bucket_index = this->apply_hash(t_key, this->avail_buckets_);
-        auto elem_iter = std::find_if(this->hash_table_[bucket_index].begin(), this->hash_table_[bucket_index].end(),
-              [t_key](const element_type& element){ return element.first == t_key; });
-        if (elem_iter == this->hash_table_[bucket_index].end()) {
-            return this->end();
-        }
-        return iterator(elem_iter, this->hash_table_.begin() + bucket_index, &this->hash_table_);
+        return iterator(this->finder(t_key));
     }
 
     const_iterator find(KeyType t_key) const {
-        const size_t bucket_index = this->apply_hash(t_key, this->avail_buckets_);
-        auto elem_iter = std::find_if(this->hash_table_[bucket_index].begin(), this->hash_table_[bucket_index].end(),
-              [t_key](const element_type& element){ return element.first == t_key; });
-        if (elem_iter == this->hash_table_[bucket_index].end()) {
-            return this->end();
-        }
-        return const_iterator(elem_iter, this->hash_table_.begin() + bucket_index, &this->hash_table_);
-        /* return this->finder(t_key); */
+        return this->finder(t_key);
     }
 
     iterator insert(element_type t_element) {
@@ -98,9 +102,27 @@ public:
             const size_t bucket_index = this->apply_hash(t_element.first, this->avail_buckets_);
             this->hash_table_[bucket_index].push_front(t_element);
             return iterator(hash_table_[bucket_index].begin(), hash_table_.begin() + bucket_index, &this->hash_table_);
-            /* return this->find(t_element.first); */
         } else {
             return this->end();
+        }
+    }
+
+    ValueType& operator[](KeyType t_key) {
+        iterator found_iterator = this->find(t_key);
+        if (found_iterator == this->end()) {
+            iterator placed_iterator = this->insert({t_key, {}});
+            return placed_iterator->second;
+        }
+        return found_iterator->second;
+    }
+
+    const ValueType& at(KeyType t_key) const {
+        const_iterator found_iterator = this->find(t_key);
+        if (found_iterator == this->end()) {
+            throw std::out_of_range("HashMap<...>.at() : index out of range");
+        }
+        else {
+            return found_iterator->second;
         }
     }
 
@@ -125,48 +147,12 @@ public:
         this->avail_buckets_ = 1;
     }
 
-    ValueType& operator[](KeyType t_key) {
-        iterator found_iterator = this->find(t_key);
-        if (found_iterator == this->end()) {
-            iterator placed_iterator = this->insert({t_key, {}});
-            return placed_iterator->second;
-        }
-        return found_iterator->second;
-    }
-
-    const ValueType& at(KeyType t_key) const {
-        const_iterator found_iterator = this->find(t_key);
-        if (found_iterator == this->end()) {
-            throw std::out_of_range("HashMap<...>.at() : index out of range");
-        }
-        else {
-            return found_iterator->second;
-        }
-    }
-
-    const_iterator begin() const {
-        auto first_nonempty_cell = this->hash_table_.begin();
-        if (this->empty()) {
-            return this->end();
-        }
-        while (first_nonempty_cell->empty()) {
-            ++first_nonempty_cell;
-        }
-        return const_iterator(first_nonempty_cell->begin(), first_nonempty_cell, &this->hash_table_);
-    }
-
-    const_iterator end() const {
-        auto last_cell = this->hash_table_.end();
-        auto last_elem = last_cell->end();
-        return const_iterator(last_elem, last_cell, &this->hash_table_);
-    }
-
-    template<class table_iterator, class bucket_iterator>
+    template<class table_iterator, class bucket_iterator, class table_pointer>
     class iterator_template {
     public:
         iterator_template(bucket_iterator t_element,
                  table_iterator t_cell,
-                 const table_type* t_table) {
+                 table_pointer* t_table) {
             this->current_element = t_element;
             this->current_cell = t_cell;
             this->parent_table = t_table;
@@ -217,22 +203,22 @@ public:
             return !(this->current_element == other.current_element);
         }
 
-    /* protected: */
-        const table_type* parent_table;
+        table_pointer* parent_table;
         bucket_iterator current_element;
         table_iterator current_cell;
     };
 
-    class iterator : public iterator_template<typename table_type::iterator, typename bucket_type::iterator> {
+    class iterator : public iterator_template<typename table_type::iterator, typename bucket_type::iterator, table_type> {
     public:
-        using iterator_template<typename table_type::iterator, typename bucket_type::iterator>::iterator_template;
+        using iterator_template<typename table_type::iterator, typename bucket_type::iterator, table_type>::iterator_template;
 
-        /* iterator(const_iterator t_iter) { */
-        /*     this->current_element = (*t_iter.current_cell).erase(t_iter.current_element, t_iter.current_element); */
-        /*     this->current_element = t_iter.current_element; */
-        /*     this->current_cell = t_iter.current_cell; */
-        /*     this->parent_table = t_iter.parent_table; */
-        /* } */
+        iterator() = default; // Required to pass yandex.contest tests
+
+        iterator(const_iterator t_iter) {
+            this->parent_table = const_cast<table_type*>(t_iter.parent_table);
+            this->current_cell = (*this->parent_table).erase(t_iter.current_cell, t_iter.current_cell);
+            this->current_element = (*this->current_cell).erase(t_iter.current_element, t_iter.current_element);
+        }
 
         element_type& operator*() {
             return *(this->current_element);
@@ -243,9 +229,9 @@ public:
         }
     };
 
-    class const_iterator : public iterator_template<typename table_type::const_iterator, typename bucket_type::const_iterator> {
+    class const_iterator : public iterator_template<typename table_type::const_iterator, typename bucket_type::const_iterator, const table_type> {
     public:
-        using iterator_template<typename table_type::const_iterator, typename bucket_type::const_iterator>::iterator_template;
+        using iterator_template<typename table_type::const_iterator, typename bucket_type::const_iterator, const table_type>::iterator_template;
 
         const element_type& operator*() {
             return *(this->current_element);
