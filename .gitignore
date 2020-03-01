@@ -1,9 +1,5 @@
-# testing code
-test_hashmap.cpp
-
 compiled
 
 # used for CMake and ccls
 CMakeLists.txt
 Debug/
-compile_commands.json
