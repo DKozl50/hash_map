@@ -17,17 +17,11 @@ public:
 
     template <class ForwardIterator>
     HashMap(ForwardIterator t_begin, ForwardIterator t_end, Hash t_hasher = Hash()) : hasher_(t_hasher)  {
-        while (t_begin != t_end) {
-            this->insert(*t_begin);
-            ++t_begin;
-        }
+        std::for_each(t_begin, t_end, [this](const element_type& elem) { this->insert(elem); });
     }
 
-    HashMap(std::initializer_list<std::pair<KeyType, ValueType>> t_list, Hash t_hasher = Hash()) : hasher_(t_hasher) {
-        for (const auto &element: t_list) {
-            this->insert(element);
-        }
-    }
+    HashMap(std::initializer_list<std::pair<KeyType, ValueType>> t_list, Hash t_hasher = Hash()) :
+        HashMap(t_list.begin(), t_list.end(), t_hasher) {}
 
     HashMap& operator=(const HashMap &t_other) {
         if (this == &t_other) {
