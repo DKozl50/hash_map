@@ -1,5 +1,0 @@
-compiled
-
-# used for CMake and ccls
-CMakeLists.txt
-Debug/
