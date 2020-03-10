@@ -17,7 +17,7 @@ public:
 
     template <class ForwardIterator>
     HashMap(ForwardIterator t_begin, ForwardIterator t_end, Hash t_hasher = Hash()) : hasher_(t_hasher)  {
-        std::for_each(t_begin, t_end, [this](const element_type& elem) { this->insert(elem); });
+        std::for_each(t_begin, t_end, [this](const element_type& elem) { insert(elem); });
     }
 
     HashMap(std::initializer_list<std::pair<KeyType, ValueType>> t_list, Hash t_hasher = Hash()) :
@@ -27,31 +27,26 @@ public:
         if (this == &t_other) {
             return *this;
         }
-        this->clear();
-        this->hasher_ = t_other.hash_function();
-        for (const auto &element: t_other) {
-            this->insert(element);
-        }
+        HashMap<KeyType, ValueType, Hash> tmp(t_other.begin(), t_other.end(), t_other.hash_function());
+        swap(tmp);
         return *this;
     }
 
     bool empty() const {
-        return this->filled_amount_ == 0;
+        return filled_amount_ == 0;
     }
 
     size_t size() const {
-        return this->filled_amount_;
+        return filled_amount_;
     }
 
     iterator begin() {
-        auto first_nonempty_cell = hash_table_.begin();
-        if (this->empty()) {
-            return this->end();
+        if (empty()) {
+            return end();
         }
-        while (first_nonempty_cell->empty()) {
-            ++first_nonempty_cell;
-        }
-        return iterator(first_nonempty_cell->begin(), first_nonempty_cell, &this->hash_table_);
+        auto first_nonempty_cell = std::find_if(hash_table_.begin(), hash_table_.end(),
+                  [](const bucket_type& bucket){ return !bucket.empty(); });
+        return iterator(first_nonempty_cell->begin(), first_nonempty_cell, &hash_table_);
     }
 
     iterator end() {
@@ -61,58 +56,57 @@ public:
     }
 
     const_iterator begin() const {
-        auto first_nonempty_cell = this->hash_table_.begin();
-        if (this->empty()) {
-            return this->end();
+        auto first_nonempty_cell = hash_table_.begin();
+        if (empty()) {
+            return end();
         }
         while (first_nonempty_cell->empty()) {
             ++first_nonempty_cell;
         }
-        return const_iterator(first_nonempty_cell->begin(), first_nonempty_cell, &this->hash_table_);
+        return const_iterator(first_nonempty_cell->begin(), first_nonempty_cell, &hash_table_);
     }
 
     const_iterator end() const {
-        auto last_cell = this->hash_table_.end();
+        auto last_cell = hash_table_.end();
         auto last_elem = last_cell->end();
-        return const_iterator(last_elem, last_cell, &this->hash_table_);
+        return const_iterator(last_elem, last_cell, &hash_table_);
     }
 
     Hash hash_function() const {
-        return this->hasher_;
+        return hasher_;
     }
 
     iterator find(KeyType t_key) {
-        return iterator(this->finder(t_key));
+        return iterator(finder(t_key));
     }
 
     const_iterator find(KeyType t_key) const {
-        return this->finder(t_key);
+        return finder(t_key);
     }
 
     iterator insert(element_type t_element) {
-        if (this->find(t_element.first) == this->end()) {
-            ++(this->filled_amount_);
-            this->upscale();
-            const size_t bucket_index = this->apply_hash(t_element.first, this->avail_buckets_);
-            this->hash_table_[bucket_index].push_front(t_element);
-            return iterator(hash_table_[bucket_index].begin(), hash_table_.begin() + bucket_index, &this->hash_table_);
-        } else {
-            return this->end();
+        if (find(t_element.first) != end()) {
+            return end();
         }
+        ++(filled_amount_);
+        upscale();
+        const size_t bucket_index = apply_hash(t_element.first, avail_buckets_);
+        hash_table_[bucket_index].push_front(t_element);
+        return iterator(hash_table_[bucket_index].begin(), hash_table_.begin() + bucket_index, &hash_table_);
     }
 
     ValueType& operator[](KeyType t_key) {
-        iterator found_iterator = this->find(t_key);
-        if (found_iterator == this->end()) {
-            iterator placed_iterator = this->insert({t_key, {}});
+        iterator found_iterator = find(t_key);
+        if (found_iterator == end()) {
+            iterator placed_iterator = insert({t_key, {}});
             return placed_iterator->second;
         }
         return found_iterator->second;
     }
 
     const ValueType& at(KeyType t_key) const {
-        const_iterator found_iterator = this->find(t_key);
-        if (found_iterator == this->end()) {
+        const_iterator found_iterator = find(t_key);
+        if (found_iterator == end()) {
             throw std::out_of_range("HashMap<...>.at() : index out of range");
         }
         else {
@@ -121,80 +115,80 @@ public:
     }
 
     void erase(KeyType t_key) {
-        if (this->find(t_key) != this->end()) {
-            size_t bucket_index = this->apply_hash(t_key, this->avail_buckets_);
-            auto elem_iter = std::find_if(this->hash_table_[bucket_index].begin(), this->hash_table_[bucket_index].end(),
+        if (find(t_key) != end()) {
+            size_t bucket_index = apply_hash(t_key, avail_buckets_);
+            auto elem_iter = std::find_if(hash_table_[bucket_index].begin(), hash_table_[bucket_index].end(),
                   [t_key](const element_type& element){ return element.first == t_key; });
-            this->hash_table_[bucket_index].erase(elem_iter);
-            --(this->filled_amount_);
-            if (this->filled_amount_ != 0) {
-                    this->downscale();
+            hash_table_[bucket_index].erase(elem_iter);
+            --(filled_amount_);
+            if (filled_amount_ != 0) {
+                    downscale();
             }
         }
     }
 
     void clear() {
-        table_type new_table(this->avail_buckets_ * 4, bucket_type());
-        this->hash_table_.clear();
-        this->hash_table_.swap(new_table);
-        this->filled_amount_ = 0;
-        this->avail_buckets_ = 1;
+        table_type new_table = table_type(4, bucket_type());
+        hash_table_.clear();
+        hash_table_.swap(new_table);
+        filled_amount_ = 0;
+        avail_buckets_ = 4;
     }
 
     template<class table_iterator, class bucket_iterator, class table_pointer>
-    class iterator_template {
+    class iterator_base {
     public:
-        iterator_template(bucket_iterator t_element,
+        iterator_base(bucket_iterator t_element,
                  table_iterator t_cell,
                  table_pointer* t_table) {
-            this->current_element = t_element;
-            this->current_cell = t_cell;
-            this->parent_table = t_table;
+            current_element = t_element;
+            current_cell = t_cell;
+            parent_table = t_table;
         }
 
-        iterator_template() = default;
+        iterator_base() = default;
 
-        explicit iterator_template(iterator_template* t_iter) {
-            this->current_element = t_iter->current_element;
-            this->current_cell = t_iter->current_cell;
-            this->parent_table = t_iter->parent_table;
+        explicit iterator_base(iterator_base* t_iter) {
+            current_element = t_iter->current_element;
+            current_cell = t_iter->current_cell;
+            parent_table = t_iter->parent_table;
         }
 
-        iterator_template& operator=(iterator_template* t_iterator) {
-            this->current_element = t_iterator->current_element;
-            this->current_cell = t_iterator->current_cell;
-            this->parent_table = t_iterator->parent_table;
+        iterator_base& operator=(iterator_base* t_iterator) {
+            current_element = t_iterator->current_element;
+            current_cell = t_iterator->current_cell;
+            parent_table = t_iterator->parent_table;
             return *this;
         }
 
-        iterator_template& operator++() {
-            ++this->current_element;
-            if (this->current_element == this->current_cell->end()) {
-                ++this->current_cell;
-                while ((this->current_cell != this->parent_table->end()) && (this->current_cell->empty())) {
-                    this->current_cell++;
+        iterator_base& operator++() {
+            ++current_element;
+            if (current_element == current_cell->end()) {
+                ++current_cell;
+                while ((current_cell != parent_table->end()) && (current_cell->empty())) {
+                    current_cell++;
                 }
-                if (this->current_cell == this->parent_table->end()) {
-                    this->current_element = this->current_cell->end();
+                if (current_cell == parent_table->end()) {
+                    current_element = current_cell->end();
                 } else {
-                    this->current_element = this->current_cell->begin();
+                    current_element = current_cell->begin();
                 }
             }
             return *this;
         }
 
-        iterator_template operator++(int) {
-            iterator_template result(*this);
+        iterator_base operator++(int) {
+            iterator_base result(*this);
             ++(*this);
             return result;
         }
 
-        bool operator==(const iterator_template& other) const {
-            return (this->current_element == other.current_element);
+        bool operator==(const iterator_base& other) const {
+            return (current_element == other.current_element);
         }
 
-        bool operator!=(const iterator_template& other) const {
-            return !(this->current_element == other.current_element);
+        bool operator!=(const iterator_base& other) const {
+            return !(current_element == other.current_element);
         }
 
         table_pointer* parent_table;
@@ -202,9 +196,9 @@ public:
         table_iterator current_cell;
     };
 
-    class iterator : public iterator_template<typename table_type::iterator, typename bucket_type::iterator, table_type> {
+    class iterator : public iterator_base<typename table_type::iterator, typename bucket_type::iterator, table_type> {
     public:
-        using iterator_template<typename table_type::iterator, typename bucket_type::iterator, table_type>::iterator_template;
+        using iterator_base<typename table_type::iterator, typename bucket_type::iterator, table_type>::iterator_base;
 
         iterator() = default; // Required to pass yandex.contest tests
 
@@ -223,9 +217,9 @@ public:
         }
     };
 
-    class const_iterator : public iterator_template<typename table_type::const_iterator, typename bucket_type::const_iterator, const table_type> {
+    class const_iterator : public iterator_base<typename table_type::const_iterator, typename bucket_type::const_iterator, const table_type> {
     public:
-        using iterator_template<typename table_type::const_iterator, typename bucket_type::const_iterator, const table_type>::iterator_template;
+        using iterator_base<typename table_type::const_iterator, typename bucket_type::const_iterator, const table_type>::iterator_base;
 
         const element_type& operator*() {
             return *(this->current_element);
@@ -238,49 +232,55 @@ public:
 
 private:
     size_t apply_hash(KeyType t_key, size_t t_bucket_range) const {
-        return this->hasher_(t_key) % t_bucket_range;
+        return hasher_(t_key) % t_bucket_range;
     }
 
     const_iterator finder(KeyType t_key) const {
-        const size_t bucket_index = this->apply_hash(t_key, this->avail_buckets_);
-        auto elem_iter = std::find_if(this->hash_table_[bucket_index].begin(), this->hash_table_[bucket_index].end(),
+        const size_t bucket_index = apply_hash(t_key, avail_buckets_);
+        auto elem_iter = std::find_if(hash_table_[bucket_index].begin(), hash_table_[bucket_index].end(),
               [t_key](const element_type& element){ return element.first == t_key; });
-        if (elem_iter == this->hash_table_[bucket_index].end()) {
-            return this->end();
+        if (elem_iter == hash_table_[bucket_index].end()) {
+            return end();
         }
-        return const_iterator(elem_iter, this->hash_table_.begin() + bucket_index, &this->hash_table_);
+        return const_iterator(elem_iter, hash_table_.begin() + bucket_index, &hash_table_);
     }
 
     void upscale() {
-        if ((double)this->filled_amount_ / this->avail_buckets_ > this->upscale_load_factor_) {
-            table_type new_table(this->avail_buckets_ * 2, bucket_type());
-            for (auto &bucket: this->hash_table_) {
+        if ((double)filled_amount_ / avail_buckets_ > upscale_load_factor_) {
+            table_type new_table(avail_buckets_ * 2, bucket_type());
+            for (auto &bucket: hash_table_) {
                 for (const auto &element: bucket) {
-                    size_t target_bucket = this->apply_hash(element.first, this->avail_buckets_ * 2);
+                    size_t target_bucket = apply_hash(element.first, avail_buckets_ * 2);
                     new_table[target_bucket].push_front({element.first, element.second});
                 }
                 bucket.clear();
             }
-            this->hash_table_.clear();
-            this->hash_table_.swap(new_table);
-            this->avail_buckets_ *= 2;
+            hash_table_.clear();
+            hash_table_.swap(new_table);
+            avail_buckets_ *= 2;
         }
     }
 
     void downscale() {
-        if ((double)this->filled_amount_ / this->avail_buckets_ < this->downscale_load_factor_) {
-            table_type new_table(this->avail_buckets_ / 2, bucket_type());
-            for (auto &bucket: this->hash_table_) {
+        if ((double)filled_amount_ / avail_buckets_ < downscale_load_factor_) {
+            table_type new_table(avail_buckets_ / 2, bucket_type());
+            for (auto &bucket: hash_table_) {
                 for (const auto &element: bucket) {
-                    size_t target_bucket = this->apply_hash(element.first, this->avail_buckets_ / 2);
+                    size_t target_bucket = apply_hash(element.first, avail_buckets_ / 2);
                     new_table[target_bucket].push_front({element.first, element.second});
                 }
                 bucket.clear();
             }
-            this->hash_table_.clear();
-            this->hash_table_.swap(new_table);
-            this->avail_buckets_ /= 2;
+            hash_table_.clear();
+            hash_table_.swap(new_table);
+            avail_buckets_ /= 2;
         }
+    }
+
+    void swap(HashMap<KeyType, ValueType, Hash> t_other) {
+        avail_buckets_ = t_other.avail_buckets_;
+        filled_amount_ = t_other.filled_amount_;
+        hash_table_.swap(t_other.hash_table_);
     }
 
     const double upscale_load_factor_ = 0.75;
