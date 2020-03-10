@@ -41,21 +41,22 @@ public:
     }
 
     iterator begin() {
-        if (empty()) {
-            return end();
-        }
-        auto first_nonempty_cell = std::find_if(hash_table_.begin(), hash_table_.end(),
-                  [](const bucket_type& bucket){ return !bucket.empty(); });
-        return iterator(first_nonempty_cell->begin(), first_nonempty_cell, &hash_table_);
+        return iterator(cbegin());
     }
 
     iterator end() {
-        auto last_cell = hash_table_.end();
-        auto last_elem = last_cell->end();
-        return iterator(last_elem, last_cell, &hash_table_);
+        return iterator(cend());
     }
 
     const_iterator begin() const {
+        return cbegin();
+    }
+
+    const_iterator end() const {
+        return cend();
+    }
+
+    const_iterator cbegin() const {
         auto first_nonempty_cell = hash_table_.begin();
         if (empty()) {
             return end();
@@ -66,23 +67,35 @@ public:
         return const_iterator(first_nonempty_cell->begin(), first_nonempty_cell, &hash_table_);
     }
 
-    const_iterator end() const {
+    const_iterator cend() const {
         auto last_cell = hash_table_.end();
         auto last_elem = last_cell->end();
         return const_iterator(last_elem, last_cell, &hash_table_);
     }
+
 
     Hash hash_function() const {
         return hasher_;
     }
 
     iterator find(KeyType t_key) {
-        return iterator(finder(t_key));
+        return iterator(cfind(t_key));
     }
 
     const_iterator find(KeyType t_key) const {
-        return finder(t_key);
+        return cfind(t_key);
     }
+
+    const_iterator cfind(KeyType t_key) const {
+        const size_t bucket_index = apply_hash(t_key, avail_buckets_);
+        auto elem_iter = std::find_if(hash_table_[bucket_index].begin(), hash_table_[bucket_index].end(),
+              [t_key](const element_type& element){ return element.first == t_key; });
+        if (elem_iter == hash_table_[bucket_index].end()) {
+            return end();
+        }
+        return const_iterator(elem_iter, hash_table_.begin() + bucket_index, &hash_table_);
+    }
+
 
     iterator insert(element_type t_element) {
         if (find(t_element.first) != end()) {
@@ -109,21 +122,20 @@ public:
         if (found_iterator == end()) {
             throw std::out_of_range("HashMap<...>.at() : index out of range");
         }
-        else {
-            return found_iterator->second;
-        }
+        return found_iterator->second;
     }
 
     void erase(KeyType t_key) {
-        if (find(t_key) != end()) {
-            size_t bucket_index = apply_hash(t_key, avail_buckets_);
-            auto elem_iter = std::find_if(hash_table_[bucket_index].begin(), hash_table_[bucket_index].end(),
-                  [t_key](const element_type& element){ return element.first == t_key; });
-            hash_table_[bucket_index].erase(elem_iter);
-            --(filled_amount_);
-            if (filled_amount_ != 0) {
-                    downscale();
-            }
+        if (find(t_key) == end()) {
+            return;
+        }
+        size_t bucket_index = apply_hash(t_key, avail_buckets_);
+        auto elem_iter = std::find_if(hash_table_[bucket_index].begin(), hash_table_[bucket_index].end(),
+                [t_key](const element_type& element){ return element.first == t_key; });
+        hash_table_[bucket_index].erase(elem_iter);
+        --(filled_amount_);
+        if (filled_amount_ != 0) {
+                downscale();
         }
     }
 
@@ -200,7 +212,7 @@ public:
     public:
         using iterator_base<typename table_type::iterator, typename bucket_type::iterator, table_type>::iterator_base;
 
-        iterator() = default; // Required to pass yandex.contest tests
+        iterator() = default;
 
         iterator(const_iterator t_iter) {
             this->parent_table = const_cast<table_type*>(t_iter.parent_table);
@@ -235,46 +247,38 @@ private:
         return hasher_(t_key) % t_bucket_range;
     }
 
-    const_iterator finder(KeyType t_key) const {
-        const size_t bucket_index = apply_hash(t_key, avail_buckets_);
-        auto elem_iter = std::find_if(hash_table_[bucket_index].begin(), hash_table_[bucket_index].end(),
-              [t_key](const element_type& element){ return element.first == t_key; });
-        if (elem_iter == hash_table_[bucket_index].end()) {
-            return end();
-        }
-        return const_iterator(elem_iter, hash_table_.begin() + bucket_index, &hash_table_);
-    }
-
     void upscale() {
-        if ((double)filled_amount_ / avail_buckets_ > upscale_load_factor_) {
-            table_type new_table(avail_buckets_ * 2, bucket_type());
-            for (auto &bucket: hash_table_) {
-                for (const auto &element: bucket) {
-                    size_t target_bucket = apply_hash(element.first, avail_buckets_ * 2);
-                    new_table[target_bucket].push_front({element.first, element.second});
-                }
-                bucket.clear();
-            }
-            hash_table_.clear();
-            hash_table_.swap(new_table);
-            avail_buckets_ *= 2;
+        if ((double)filled_amount_ / avail_buckets_ <= upscale_load_factor_) {
+            return;
         }
+        table_type new_table(avail_buckets_ * 2, bucket_type());
+        for (auto &bucket: hash_table_) {
+            for (const auto &element: bucket) {
+                size_t target_bucket = apply_hash(element.first, avail_buckets_ * 2);
+                new_table[target_bucket].push_front({element.first, element.second});
+            }
+            bucket.clear();
+        }
+        hash_table_.clear();
+        hash_table_.swap(new_table);
+        avail_buckets_ *= 2;
     }
 
     void downscale() {
-        if ((double)filled_amount_ / avail_buckets_ < downscale_load_factor_) {
-            table_type new_table(avail_buckets_ / 2, bucket_type());
-            for (auto &bucket: hash_table_) {
-                for (const auto &element: bucket) {
-                    size_t target_bucket = apply_hash(element.first, avail_buckets_ / 2);
-                    new_table[target_bucket].push_front({element.first, element.second});
-                }
-                bucket.clear();
-            }
-            hash_table_.clear();
-            hash_table_.swap(new_table);
-            avail_buckets_ /= 2;
+        if ((double)filled_amount_ / avail_buckets_ >= downscale_load_factor_) {
+            return;
         }
+        table_type new_table(avail_buckets_ / 2, bucket_type());
+        for (auto &bucket: hash_table_) {
+            for (const auto &element: bucket) {
+                size_t target_bucket = apply_hash(element.first, avail_buckets_ / 2);
+                new_table[target_bucket].push_front({element.first, element.second});
+            }
+            bucket.clear();
+        }
+        hash_table_.clear();
+        hash_table_.swap(new_table);
+        avail_buckets_ /= 2;
     }
 
     void swap(HashMap<KeyType, ValueType, Hash> t_other) {
