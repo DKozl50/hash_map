@@ -93,7 +93,7 @@ public:
         if (elem_iter == hash_table_[bucket_index].end()) {
             return end();
         }
-        return const_iterator(elem_iter, hash_table_.begin() + bucket_index, &hash_table_);
+        return const_iterator(elem_iter, std::next(hash_table_.begin(), bucket_index), &hash_table_);
     }
 
 
@@ -101,11 +101,11 @@ public:
         if (find(t_element.first) != end()) {
             return end();
         }
-        ++(filled_amount_);
+        ++filled_amount_;
         try_upscale();
         const size_t bucket_index = apply_hash(t_element.first, avail_buckets_);
         hash_table_[bucket_index].push_front(t_element);
-        return iterator(hash_table_[bucket_index].begin(), hash_table_.begin() + bucket_index, &hash_table_);
+        return iterator(hash_table_[bucket_index].begin(), std::next(hash_table_.begin(), bucket_index), &hash_table_);
     }
 
     ValueType& operator[](KeyType t_key) {
@@ -133,9 +133,9 @@ public:
         auto elem_iter = std::find_if(hash_table_[bucket_index].begin(), hash_table_[bucket_index].end(),
                 [t_key](const element_type& element){ return element.first == t_key; });
         hash_table_[bucket_index].erase(elem_iter);
-        --(filled_amount_);
+        --filled_amount_;
         if (filled_amount_ != 0) {
-                try_downscale();
+            try_downscale();
         }
     }
 
@@ -152,9 +152,7 @@ public:
     public:
         iterator_base() {};
 
-        iterator_base(bucket_iterator t_element,
-                 table_iterator t_cell,
-                 table_pointer* t_table) {
+        iterator_base(bucket_iterator t_element, table_iterator t_cell, table_pointer* t_table) {
             current_element = t_element;
             current_cell = t_cell;
             parent_table = t_table;
@@ -258,17 +256,12 @@ private:
 
     void rehash(size_t new_size) {
         table_type new_table(new_size, bucket_type());
-        for (auto &bucket: hash_table_) {
-            for (const auto &element: bucket) {
-                size_t target_bucket = apply_hash(element.first, new_size);
-                new_table[target_bucket].push_front({element.first, element.second});
-            }
-            bucket.clear();
+        for (const auto &element: *this) {
+            size_t target_bucket = apply_hash(element.first, new_size);
+            new_table[target_bucket].push_front({element.first, element.second});
         }
-        hash_table_.clear();
         hash_table_.swap(new_table);
     }
-
 
     void swap(HashMap<KeyType, ValueType, Hash> t_other) {
         avail_buckets_ = t_other.avail_buckets_;
